@@ -2,7 +2,7 @@ bl_info = {
     "name": "Keyframe Tools",
     "blender": (4, 2, 0),
     "category": "Object",
-    "version": (1, 0, 1),
+    "version": (1, 0, 2),
     "author": "KSYN",
     "description": "A set of tools for inserting, deleting, and moving keyframes.",
     "location": "View3D > UI > KSYN > Keyframe Inserter/Keyframes",

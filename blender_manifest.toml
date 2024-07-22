@@ -2,7 +2,7 @@ schema_version = "1.0.0"
 
 # Keyframe Tools extension manifest file
 id = "keyframe_tools_extension"
-version = "1.0.1"
+version = "1.0.2"
 name = "Keyframe Tools"
 tagline = "A set of tools for inserting, deleting, and moving keyframes"
 maintainer = "KSYN <hydrocallis@gmail.com>"
