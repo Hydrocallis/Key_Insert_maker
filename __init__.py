@@ -279,7 +279,12 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
         row.separator(factor=2.0)  # Add spacing
         row.operator("object.move_keyframe", text="", icon='NEXT_KEYFRAME').direction = 'LAST'
         row = layout.row(align=True)
+        
         self.draw_framerate(row, rd)
+        view = context.space_data
+        row = layout.row(align=True)
+        
+        row.prop(view, "lock_camera", text="Camera to View")
 
 # Define the Keyframes panel
 class OBJECT_PT_keyframes_panel(bpy.types.Panel):
