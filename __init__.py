@@ -238,6 +238,21 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = 'KSYN'
     
+    def draw_framerate(self, layout, rd):
+#        if RENDER_PT_format._preset_class is None:
+#            RENDER_PT_format._preset_class = bpy.types.RENDER_MT_framerate_presets
+
+#        args = rd.fps, rd.fps_base, RENDER_PT_format._preset_class.bl_label
+#        fps_label_text, show_framerate = RENDER_PT_format._draw_framerate_label(*args)
+
+#        layout.menu("RENDER_MT_framerate_presets", text=fps_label_text)
+
+#        if show_framerate:
+            col = layout.column(align=True)
+            col.prop(rd, "fps")
+            col.prop(rd, "fps_base", text="Base")
+            
+    
     def draw_header(self, context):
         layout = self.layout
         layout.label(icon='DECORATE_KEYFRAME')  # Specify the icon
@@ -246,6 +261,7 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
         obj = scene.keymapframe_maker.key_f_target_object
+        rd = context.scene.render
         
         layout.prop(scene.keymapframe_maker, "key_f_target_object")
         row = layout.row(align=True)
@@ -262,6 +278,8 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
         row.operator("object.move_keyframe", text="", icon='TRIA_RIGHT').direction = 'NEXT'
         row.separator(factor=2.0)  # Add spacing
         row.operator("object.move_keyframe", text="", icon='NEXT_KEYFRAME').direction = 'LAST'
+        row = layout.row(align=True)
+        self.draw_framerate(row, rd)
 
 # Define the Keyframes panel
 class OBJECT_PT_keyframes_panel(bpy.types.Panel):
