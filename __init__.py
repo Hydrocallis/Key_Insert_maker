@@ -2,7 +2,7 @@ bl_info = {
     "name": "Keyframe Tools",
     "blender": (4, 2, 0),
     "category": "Object",
-    "version": (1, 0, 4),
+    "version": (1, 0, 5),
     "author": "KSYN",
     "description": "A set of tools for inserting, deleting, and moving keyframes.",
     "location": "View3D > UI > KSYN > Keyframe Inserter/Keyframes",
@@ -117,13 +117,16 @@ def make_constant_dict(obj,key_maps_dict):
                 if fcurve.data_path == f'constraints["{constraint_name}"].influence':
                     constraint_keyframes = [keyframe.co[0] for keyframe in fcurve.keyframe_points]
                     key_maps_dict["Constraint Keyframes"] = constraint_keyframes
-                    # break  # Found the constraint, no need to continue searching
+                    # print("###key_maps_dict",key_maps_dict)
+
+                    return key_maps_dict["Constraint Keyframes"]
                 else:
                     key_maps_dict["Constraint Keyframes"] = []
 
     else:
         # If no 'AutoTrack' constraint is found
         key_maps_dict["Constraint Keyframes"] = []
+
     return key_maps_dict["Constraint Keyframes"]
 
 def make_key_maps(obj, include_all=True, threshold=10):
@@ -261,49 +264,38 @@ def layout_label(layout, all_keyframes, current_frame, next_keyframe, previous_k
     rotation_keyframes = key_maps_dict["Rotation_euler Keyframes"]
     scale_keyframes = key_maps_dict["Scale Keyframes"]
     
+    blank_icon = 'BLANK1'  # 空白用のアイコン
+    unified_transform_icon = 'OUTLINER_OB_EMPTY'  # 統一アイコンとして使用するアイコン
+
     for frame in all_keyframes:
         prev, next_ = calculate_differences(current_frame, previous_keyframe, next_keyframe)
-                
+
         if frame == current_frame:
             prev_label(layout, prev)
             row = layout.row(align=True)
             row.label(text=f" {frame}", icon='DECORATE_KEYFRAME')
-            if frame in matching_keyframes:
-                row.label(text="", icon="CON_TRACKTO")
-            if frame in location_keyframes:
-                row.label(text="", icon="OUTLINER_OB_EMPTY")
-            if frame in rotation_keyframes:
-                row.label(text="", icon="ORIENTATION_LOCAL")
-            if frame in scale_keyframes:
-                row.label(text="", icon="FULLSCREEN_ENTER")
+            row.label(text="", icon="CON_TRACKTO" if frame in matching_keyframes else blank_icon)
+            if frame in location_keyframes or frame in rotation_keyframes or frame in scale_keyframes:
+                row.label(text="", icon=unified_transform_icon)
+            else:
+                row.label(text="", icon=blank_icon)
             next_label(layout, next_)
         else:
             row = layout.row(align=True)
             row.label(text=f" {frame}", icon='KEYFRAME')
-            if frame in matching_keyframes:
-                row.label(text="", icon="CON_TRACKTO")
-            if frame in location_keyframes:
-                row.label(text="", icon="OUTLINER_OB_EMPTY")
-            if frame in rotation_keyframes:
-                row.label(text="", icon="ORIENTATION_LOCAL")
-            if frame in scale_keyframes:
-                row.label(text="", icon="FULLSCREEN_ENTER")
+            row.label(text="", icon="CON_TRACKTO" if frame in matching_keyframes else blank_icon)
+            if frame in location_keyframes or frame in rotation_keyframes or frame in scale_keyframes:
+                row.label(text="", icon=unified_transform_icon)
+            else:
+                row.label(text="", icon=blank_icon)
 
         if current_frame not in all_keyframes:
             if frame == previous_keyframe:
                 prev_label(layout, prev)
                 row = layout.row(align=True)
                 row.label(text=f"    {current_frame}", icon='RIGHTARROW')
-                # if frame in matching_keyframes:
-                #     row.label(text="", icon="CON_TRACKTO")
-                # if frame in location_keyframes:
-                #     row.label(text="", icon="OUTLINER_OB_EMPTY")
-                # if frame in rotation_keyframes:
-                #     row.label(text="", icon="ORIENTATION_LOCAL")
-                # if frame in scale_keyframes:
-                #     row.label(text="", icon="FULLSCREEN_ENTER")
                 next_label(layout, next_)
-        
+
 def create_keymap_list(keyframe_points, scene):
     current_frame = scene.frame_current
     previous_keyframe = None
@@ -405,10 +397,10 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
         row = layout.row(align=True)
         
         # self.draw_framerate(row, rd)
-        view = context.space_data
-        row = layout.row(align=True)
+        # view = context.space_data
+        # row = layout.row(align=True)
         
-        row.prop(view, "lock_camera", text="Camera to View")
+        # row.prop(view, "lock_camera", text="Camera to View")
         props = scene.keymapframe_maker
 
         row = layout.row()
@@ -564,7 +556,6 @@ class OBJECT_OT_animated_playback(bpy.types.Operator):
         
         context.area.tag_redraw()
         return {'CANCELLED'}
-
 # パネルの定義
 class MY_PT_AnimatedPlaybackPanel(bpy.types.Panel):
     bl_label = "Keyframes Animation Control"
@@ -595,7 +586,6 @@ class MY_PT_AnimatedPlaybackPanel(bpy.types.Panel):
         layout.prop(props, "speed", text="Speed")
         layout.prop(props, "direction", text="Direction")
         layout.operator("object.animated_playback", text="Start Animated Playback")
-
 # アドオンプレファレンスの定義
 class KYSYNKFM_MyAddonPreferences(AddonPreferences):
     bl_idname = __name__
@@ -624,7 +614,6 @@ class KYSYNKFM_MyAddonPreferences(AddonPreferences):
         layout.prop(self, "category_keyframe")
         layout.prop(self, "category_keyframes")
         layout.prop(self, "category_playback")
-
 # プレファレンス画面を開くオペレーターの定義
 class KYSYNKFM_OpenAddonPreferencesOperator(Operator):
     bl_idname = "ksynkfmpreferences.open_my_addon_prefs"
