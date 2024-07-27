@@ -133,6 +133,10 @@ def make_key_maps(obj, include_all=True, threshold=10):
     scene = bpy.context.scene
     threshold = scene.keymapframe_maker.threshold
     
+
+    # アニメーションデータまたはアクションが存在しない場合のチェック
+    if not obj.animation_data or not obj.animation_data.action:
+        return {obj.name: {}}
     # Collect all keyframe points
     keyframe_points = sorted({kp.co[0] for fcu in obj.animation_data.action.fcurves for kp in fcu.keyframe_points})
     
@@ -149,14 +153,19 @@ def make_key_maps(obj, include_all=True, threshold=10):
         path_keyframes = sorted({kp.co[0] for fcu in obj.animation_data.action.fcurves if path in fcu.data_path for kp in fcu.keyframe_points})
         key_maps_dict[f"{path.capitalize()} Keyframes"] = path_keyframes
 
-    key_maps_dict["Constraint Keyframes"] = make_constant_dict(obj,key_maps_dict)
+    key_maps_dict["Constraint Keyframes"] = make_constant_dict(obj, key_maps_dict)
 
     # Find matching frames
     all_keyframes = key_maps_dict["All Keyframes"]
     constraint_keyframes = key_maps_dict["Constraint Keyframes"]
     matching_keyframes = sorted(set(all_keyframes) & set(constraint_keyframes))
     key_maps_dict["Matching Keyframes"] = matching_keyframes
-    return key_maps_dict
+
+    # Create a dictionary with the object name as the top-level key
+    result = {obj.name: key_maps_dict}
+    return result
+
+
 # Operator to move between keyframes
 class OBJECT_OT_move_keyframe(bpy.types.Operator):
     bl_idname = "object.move_keyframe"
@@ -189,7 +198,9 @@ class OBJECT_OT_move_keyframe(bpy.types.Operator):
             return {'CANCELLED'}
         
         key_maps_dict = make_key_maps(obj)
-        all_keyframes = key_maps_dict.get("All Keyframes", [])
+        # all_keyframes = key_maps_dict.get("All Keyframes", [])
+        all_keyframes = key_maps_dict.get(obj.name, {}).get("All Keyframes", [])
+
         
         if not all_keyframes:
             self.report({'INFO'}, "No keyframes available.")
@@ -258,45 +269,110 @@ def prev_label(layout, prev):
 def next_label(layout, next_):
     layout.label(text=f"    {next_}", icon='SORT_ASC')
 
-def layout_label(layout, all_keyframes, current_frame, next_keyframe, previous_keyframe, key_maps_dict):
-    matching_keyframes = key_maps_dict["Matching Keyframes"]
-    location_keyframes = key_maps_dict["Location Keyframes"]
-    rotation_keyframes = key_maps_dict["Rotation_euler Keyframes"]
-    scale_keyframes = key_maps_dict["Scale Keyframes"]
+
+
+def create_matching_list(objects):
+    def get_all_keyframes(key_maps_dict, obj_name):
+        return key_maps_dict.get(obj_name, {}).get("All Keyframes", [])
+
+    # 各オブジェクトの全キーフレームを取得
+    key_maps_dict = {}
+    for obj in objects:
+        key_maps_dict[obj.name] = make_key_maps(obj).get(obj.name, {})
+
+    # 最初のオブジェクトのキーフレームリストを基準に
+    base_keyframes = set(get_all_keyframes(key_maps_dict, objects[0].name))
     
+    # 他のオブジェクトと比較
+    for obj in objects[1:]:
+        obj_keyframes = set(get_all_keyframes(key_maps_dict, obj.name))
+        base_keyframes &= obj_keyframes
+    
+    return sorted(base_keyframes)
+
+
+def layout_label(layout):
+    
+    include_all = bpy.context.scene.keymapframe_maker.include_all
+
+    obj = bpy.context.scene.keymapframe_maker.key_f_target_object
+    # Get keyframe data
+   
     blank_icon = 'BLANK1'  # 空白用のアイコン
     unified_transform_icon = 'OUTLINER_OB_EMPTY'  # 統一アイコンとして使用するアイコン
 
-    for frame in all_keyframes:
-        prev, next_ = calculate_differences(current_frame, previous_keyframe, next_keyframe)
+    objlist = [obj, bpy.context.object]
 
-        if frame == current_frame:
-            prev_label(layout, prev)
-            row = layout.row(align=True)
-            row.label(text=f" {frame}", icon='DECORATE_KEYFRAME')
-            row.label(text="", icon="CON_TRACKTO" if frame in matching_keyframes else blank_icon)
-            if frame in location_keyframes or frame in rotation_keyframes or frame in scale_keyframes:
-                row.label(text="", icon=unified_transform_icon)
+    main_row = layout.row(align=True)
+    objlist = [obj, bpy.context.object]
+    obj_key_matchinlist=create_matching_list(objlist)
+
+    for obj in objlist:
+
+
+        key_maps_dict = make_key_maps(obj, include_all=include_all)
+        
+        all_keyframes = key_maps_dict.get(obj.name, {}).get("All Keyframes", [])
+        
+        if not all_keyframes:
+            return
+
+        previous_keyframe, next_keyframe, current_frame = create_keymap_list(all_keyframes)
+        matching_keyframes = key_maps_dict.get(obj.name, {}).get("Matching Keyframes", [])
+        location_keyframes = key_maps_dict.get(obj.name, {}).get("Location Keyframes", [])
+        rotation_keyframes = key_maps_dict.get(obj.name, {}).get("Rotation_euler Keyframes", [])
+        scale_keyframes = key_maps_dict.get(obj.name, {}).get("Scale Keyframes", [])
+    
+        column = main_row.column(align=True)
+        column.label(text=obj.name, icon='OBJECT_DATA')
+
+        # キーフレームボックス1
+        box1 = column.box()
+        col1 = box1.column(align=True)
+
+        # キーフレームを表示
+        for frame in all_keyframes:
+            prev, next_ = calculate_differences(current_frame, previous_keyframe, next_keyframe)
+
+            if frame == current_frame:
+                prev_label(col1, prev)
+                row = col1.row(align=True)
+                row.label(text=f" {frame}", icon='DECORATE_KEYFRAME')
+                row.label(text="", icon="CON_TRACKTO" if frame in matching_keyframes else blank_icon)
+                if frame in location_keyframes or frame in rotation_keyframes or frame in scale_keyframes:
+                    row.label(text="", icon=unified_transform_icon)
+                else:
+                    row.label(text="", icon=blank_icon)
+                    
+                if frame in obj_key_matchinlist:
+                    row.label(text=f"", icon='CHECKMARK')
+                else:
+                    row.label(text="", icon=blank_icon)
+                next_label(col1, next_)
             else:
-                row.label(text="", icon=blank_icon)
-            next_label(layout, next_)
-        else:
-            row = layout.row(align=True)
-            row.label(text=f" {frame}", icon='KEYFRAME')
-            row.label(text="", icon="CON_TRACKTO" if frame in matching_keyframes else blank_icon)
-            if frame in location_keyframes or frame in rotation_keyframes or frame in scale_keyframes:
-                row.label(text="", icon=unified_transform_icon)
-            else:
-                row.label(text="", icon=blank_icon)
+                row = col1.row(align=True)
+                row.label(text=f" {frame}", icon='KEYFRAME')
+                row.label(text="", icon="CON_TRACKTO" if frame in matching_keyframes else blank_icon)
+                if frame in location_keyframes or frame in rotation_keyframes or frame in scale_keyframes:
+                    row.label(text="", icon=unified_transform_icon)
+                else:
+                    row.label(text="", icon=blank_icon)
+                if frame in obj_key_matchinlist:
+                    row.label(text=f"", icon='CHECKMARK')
+                else:
+                    row.label(text="", icon=blank_icon)
+            if current_frame not in all_keyframes:
+                if frame == previous_keyframe:
+                    prev_label(col1, prev)
+                    row = col1.row(align=True)
+                    row.label(text=f"    {current_frame}", icon='RIGHTARROW')
+                    next_label(col1, next_)
 
-        if current_frame not in all_keyframes:
-            if frame == previous_keyframe:
-                prev_label(layout, prev)
-                row = layout.row(align=True)
-                row.label(text=f"    {current_frame}", icon='RIGHTARROW')
-                next_label(layout, next_)
 
-def create_keymap_list(keyframe_points, scene):
+
+def create_keymap_list(keyframe_points):
+    
+    scene = bpy.context.scene
     current_frame = scene.frame_current
     previous_keyframe = None
     next_keyframe = None
@@ -320,21 +396,9 @@ def create_keymap_list(keyframe_points, scene):
 def draw_keyframes(layout, obj, scene):
     if obj is not None and obj.animation_data and obj.animation_data.action:
         layout.label(text="Keyframes:")
-        keyframe_points = sorted({int(kp.co[0]) for fcu in obj.animation_data.action.fcurves for kp in fcu.keyframe_points})
-        include_all = scene.keymapframe_maker.include_all
         
 
-        # Get keyframe data
-        key_maps_dict = make_key_maps(obj, include_all=include_all)
-        all_keyframes = key_maps_dict.get("All Keyframes", [])
-        matching_keyframes = key_maps_dict.get("Matching Keyframes", [])
-        
-        if not all_keyframes:
-            return
-        
-        previous_keyframe, next_keyframe, current_frame = create_keymap_list(all_keyframes, scene)
-        
-        layout_label(layout, all_keyframes, current_frame, next_keyframe, previous_keyframe, key_maps_dict)
+        layout_label(layout)
 # Define the panel
 class OBJECT_PT_keyframe_panel(bpy.types.Panel):
     bl_label = "Keyframe Inserter"
