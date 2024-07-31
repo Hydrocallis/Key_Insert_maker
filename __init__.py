@@ -15,7 +15,8 @@ bl_info = {
 import bpy
 from bpy.types import AddonPreferences, Panel,Operator
 from bpy.props import StringProperty
-
+import bpy
+from bpy.app.handlers import persistent
 # プロパティクラスの定義
 class ShowPanel():
     show_draw_constraint: bpy.props.BoolProperty(
@@ -121,7 +122,8 @@ class KeyMapFrameMakerProperties(bpy.types.PropertyGroup,KeyMapFrameMakerPropert
 # Add pointer property to the scene 
 
 
-# コレクションを更新するハンドラー
+# コレクションを更新するハンドラー(デコレーターをつけて永続的に) https://docs.blender.org/api/current/bpy.app.handlers.html
+@persistent
 def update_constraints(scene):
     crprops = scene.keymapframe_maker.constraints_props
     target_object = scene.keymapframe_maker.key_f_target_object  # ここでアクティブオブジェクトを読み込む
@@ -146,6 +148,9 @@ def update_constraints(scene):
 
     scene.keymapframe_maker.anime_fcurves_props.update_active_fcurves(bpy.context)
     scene.keymapframe_maker.anime_fcurves_props.update_select_fcurves(bpy.context)
+
+
+
 
 def register_properties():
     bpy.utils.register_class(ConstraintItem)
@@ -1076,13 +1081,14 @@ def update_panel_category(self, context):
 def update_panel_category(self, context):
     register_panels()
     
-def register_panels():
-    panels = [
+panels = [
         (MY_PT_AnimatedPlaybackPanel, "category_playback"),
         (OBJECT_PT_keyframe_panel, "category_keyframe"),
         (OBJECT_PT_keyframes_panel, "category_keyframes"),
         (OBJECT_PT_FCurvePathsPanel, "category_fcurvepath"),
     ]
+def register_panels():
+
 
     addon_prefs = bpy.context.preferences.addons[__name__].preferences
 
@@ -1094,6 +1100,11 @@ def register_panels():
 
         panel.bl_category = getattr(addon_prefs, category_attr)
         bpy.utils.register_class(panel)
+
+def unregister_panels():
+
+    for panel, category_attr in panels:
+        bpy.utils.unregister_class(panel)
 
 classes = [
     OBJECT_OT_animated_playback,
@@ -1119,14 +1130,7 @@ def unregister():
         bpy.utils.unregister_class(cls)
 
     unregister_properties()
-    panels = [
-        OBJECT_PT_keyframe_panel,
-        OBJECT_PT_keyframes_panel,
-        MY_PT_AnimatedPlaybackPanel
-    ]
-    for panel in panels:
-        bpy.utils.unregister_class(panel)
-        
+    unregister_panels()
     fcurveprops_unregister()
     constrain_unregister()
 
