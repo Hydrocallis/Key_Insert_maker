@@ -47,14 +47,60 @@ class KeyMapFrameMakerProperties_op():
         default="Not Running"
     ) # type: ignore
 
+# コレクションプロパティ用のプロパティグループ
+class ConstraintItem(bpy.types.PropertyGroup):
+    name: bpy.props.StringProperty(name="Name") # type: ignore
+    type: bpy.props.StringProperty(name="Type") # type: ignore
+
+# コレクションプロパティの定義
+class ConstraintsProperties(bpy.types.PropertyGroup):
+    constraints: bpy.props.CollectionProperty(type=ConstraintItem) # type: ignore
+    constraints_index: bpy.props.IntProperty(name="Index", default=0) # type: ignore
+    constraints_select: bpy.props.CollectionProperty(type=ConstraintItem) # type: ignore
+    constraints_select_index: bpy.props.IntProperty(name="Index", default=0) # type: ignore
+
+
+
+
+# コレクションプロパティのためのカスタムプロパティグループ
+class FCurvePropertyGroup(bpy.types.PropertyGroup):
+    name: bpy.props.StringProperty(name="F-Curve Path") # type: ignore
+
+class KYSYNKFM_MyProperties(bpy.types.PropertyGroup):
+    active_fcurves: bpy.props.CollectionProperty(type=FCurvePropertyGroup) # type: ignore
+    select_fcurves: bpy.props.CollectionProperty(type=FCurvePropertyGroup) # type: ignore
+    
+    active_index: bpy.props.IntProperty() # type: ignore
+    select_index: bpy.props.IntProperty() # type: ignore
+    
+    object: bpy.props.PointerProperty(
+        name="Target Object",
+        type=bpy.types.Object,
+        description="Target object to get F-Curve paths from"
+    ) # type: ignore
+
+    def update_active_fcurves(self, context):
+        self.active_fcurves.clear()
+        obj = context.active_object
+        if obj and obj.animation_data:
+            for fcurve in obj.animation_data.action.fcurves:
+                item = self.active_fcurves.add()
+                item.name = fcurve.data_path
+
+ 
+                
+    def update_select_fcurves(self, context):
+        self.select_fcurves.clear()
+        obj =context.scene.keymapframe_maker.key_f_target_object
+        if obj and obj.animation_data:
+            for fcurve in obj.animation_data.action.fcurves:
+                item = self.select_fcurves.add()
+                item.name = fcurve.data_path
+  
 class KeyMapFrameMakerProperties(bpy.types.PropertyGroup,KeyMapFrameMakerProperties_op,ShowPanel):
-    # constraints: bpy.props.EnumProperty(
-    #     name="Constraints",
-    #     description="List of constraints for the selected object",
-    #     items=lambda self, context: [
-    #         (c.name, c.name, c.type) for c in context.scene.keymapframe_maker.key_f_target_object.constraints
-    #     ] if context.scene.keymapframe_maker.key_f_target_object and context.scene.keymapframe_maker.key_f_target_object.constraints else [("None", "None", "No constraints available")]
-    # ) # type: ignore
+    anime_fcurves_props : bpy.props.PointerProperty(type=KYSYNKFM_MyProperties) # type: ignore
+
+    constraints_props  : bpy.props.PointerProperty(type=ConstraintsProperties) # type: ignore
 
     key_f_target_object: bpy.props.PointerProperty(
         name="Target Object",
@@ -72,14 +118,53 @@ class KeyMapFrameMakerProperties(bpy.types.PropertyGroup,KeyMapFrameMakerPropert
         default=True,
         description="Include all keyframes or only those near the current frame"
     ) # type: ignore
-# Add pointer property to the scene properties
+# Add pointer property to the scene 
+
+
+# コレクションを更新するハンドラー
+def update_constraints(scene):
+    crprops = scene.keymapframe_maker.constraints_props
+    target_object = scene.keymapframe_maker.key_f_target_object  # ここでアクティブオブジェクトを読み込む
+    
+    if target_object:
+        constraints = crprops.constraints
+        constraints.clear()
+        for c in target_object.constraints:
+            item = constraints.add()
+            item.name = c.name
+            item.type = c.type
+
+
+    if bpy.context.object:
+        constraints_select = crprops.constraints_select
+        constraints_select.clear()
+        for c in bpy.context.object.constraints:
+            item = constraints_select.add()
+            item.name = c.name
+            item.type = c.type
+
+
+    scene.keymapframe_maker.anime_fcurves_props.update_active_fcurves(bpy.context)
+    scene.keymapframe_maker.anime_fcurves_props.update_select_fcurves(bpy.context)
+
 def register_properties():
+    bpy.utils.register_class(ConstraintItem)
+    bpy.utils.register_class(ConstraintsProperties)
+    bpy.utils.register_class(FCurvePropertyGroup)
+    bpy.utils.register_class(KYSYNKFM_MyProperties)
     bpy.utils.register_class(KeyMapFrameMakerProperties)
     bpy.types.Scene.keymapframe_maker = bpy.props.PointerProperty(type=KeyMapFrameMakerProperties)
+    bpy.app.handlers.depsgraph_update_post.append(update_constraints)
 
 def unregister_properties():
-    del bpy.types.Scene.keymapframe_maker
+    bpy.utils.unregister_class(ConstraintItem)
+    bpy.utils.unregister_class(ConstraintsProperties)
+    bpy.utils.unregister_class(FCurvePropertyGroup)
+    bpy.utils.unregister_class(KYSYNKFM_MyProperties)
     bpy.utils.unregister_class(KeyMapFrameMakerProperties)
+    del bpy.types.Scene.keymapframe_maker
+    bpy.app.handlers.depsgraph_update_post.remove(update_constraints)
+
 # Operator to insert keyframes
 class OBJECT_OT_insert_keyframe(bpy.types.Operator):
     bl_idname = "object.insert_keyframe"
@@ -106,14 +191,33 @@ class OBJECT_OT_insert_keyframe(bpy.types.Operator):
 
 def make_constant_dict(obj, key_maps_dict):
     scene = bpy.context.scene
-    # target_constraint = scene.keymapframe_maker.constraints
-    if obj==bpy.context.object:
-        target_constraint = bpy.context.scene.constraints_props.constraints_select[bpy.context.scene.constraints_props.constraints_select_index].name
-    else:
-        target_constraint = bpy.context.scene.constraints_props.constraints[bpy.context.scene.constraints_props.constraints_index].name
-    if bpy.context.scene.keymapframe_maker.key_f_target_object==bpy.context.object:
-        target_constraint = bpy.context.scene.constraints_props.constraints[bpy.context.scene.constraints_props.constraints_index].name
+    crprops=scene.keymapframe_maker.constraints_props
 
+    if obj==bpy.context.object:
+        # オブジェクトのコンストレインの値を確認するなけれれば無いとリターンする。
+        if crprops.constraints_select_index >= 0 and crprops.constraints_select_index < len(crprops.constraints_select):
+            target_constraint = crprops.constraints_select[crprops.constraints_select_index].name
+        else:
+            key_maps_dict["Constraint Keyframes"] = []
+            return key_maps_dict["Constraint Keyframes"]
+    else:
+        
+        if crprops.constraints_index >= 0 and crprops.constraints_index < len(crprops.constraints):
+
+            target_constraint = crprops.constraints[crprops.constraints_index].name
+        else:
+            key_maps_dict["Constraint Keyframes"] = []
+            return key_maps_dict["Constraint Keyframes"]
+
+
+    if bpy.context.scene.keymapframe_maker.key_f_target_object==bpy.context.object:
+        if crprops.constraints_index >= 0 and crprops.constraints_index < len(crprops.constraints):
+
+            target_constraint = crprops.constraints[crprops.constraints_index].name
+        else:
+            key_maps_dict["Constraint Keyframes"] = []
+            return key_maps_dict["Constraint Keyframes"]
+   
 
     # target_constraint = "AutoTrack"  # 'AutoTrack' というコンストレイン名を対象にする
 
@@ -145,7 +249,9 @@ def make_key_maps(obj, include_all=True, threshold=10):
     key_maps_dict={}
     scene = bpy.context.scene
     threshold = scene.keymapframe_maker.threshold
-    
+    # オブジェクトがない場合
+    if not obj:
+        return {None: {}}
 
     # アニメーションデータまたはアクションが存在しない場合のチェック
     if not obj.animation_data or not obj.animation_data.action:
@@ -290,7 +396,12 @@ def create_matching_list(objects):
 
     # 各オブジェクトの全キーフレームを取得
     key_maps_dict = {}
+    
     for obj in objects:
+        # リストの中にオブジェクトがNoneの場合
+        if obj==None:
+            return key_maps_dict
+
         key_maps_dict[obj.name] = make_key_maps(obj).get(obj.name, {})
 
     # 最初のオブジェクトのキーフレームリストを基準に
@@ -305,6 +416,10 @@ def create_matching_list(objects):
 
 
 def layout_label(layout):
+    layout.label(text="Keyframes:")
+
+
+
     
     
     include_all = bpy.context.scene.keymapframe_maker.include_all
@@ -321,16 +436,18 @@ def layout_label(layout):
     obj_key_matchinlist=create_matching_list(objlist)
 
     for obj in objlist:
+        # オブジェクトがNone場合はキーマップリストをスキップする。
+        if not obj:
+            continue
        
-
 
         key_maps_dict = make_key_maps(obj, include_all=include_all)
         # print("###key_maps_dict",key_maps_dict)
         
         all_keyframes = key_maps_dict.get(obj.name, {}).get("All Keyframes", [])
         
-        if not all_keyframes:
-            return
+        # if not all_keyframes:
+        #     return
 
         previous_keyframe, next_keyframe, current_frame = create_keymap_list(all_keyframes)
         matching_keyframes = key_maps_dict.get(obj.name, {}).get("Matching Keyframes", [])
@@ -388,6 +505,14 @@ def layout_label(layout):
                     row = col1.row(align=True)
                     row.label(text=f"    {current_frame}", icon='RIGHTARROW')
                     next_label(col1, next_)
+        
+        if obj is not None and obj.animation_data and obj.animation_data.action:
+            pass
+        else:
+            col1.label(text=f"{obj.name} Not Anime Data:")
+
+
+    
 
 def create_keymap_list(keyframe_points):
     
@@ -412,9 +537,8 @@ def create_keymap_list(keyframe_points):
     
     return previous_keyframe, next_keyframe, current_frame
 
-def draw_keyframes(layout, obj, scene):
-    if obj is not None and obj.animation_data and obj.animation_data.action:
-        layout.label(text="Keyframes:")
+def draw_keyframes(layout):
+    # if obj is not None and obj.animation_data and obj.animation_data.action:
         
 
         layout_label(layout)
@@ -430,27 +554,20 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
 
     def draw_constrains_elect(self, context):
         layout = self.layout
-        props = context.scene.keymapframe_maker
         scene=context.scene
-        # constraints_props = scene.constraints_props
+        constraints_prop=scene.keymapframe_maker.constraints_props
 
         row = layout.row()
         col1 = row.column()
         col2 = row.column()
-        obj = context.scene.keymapframe_maker.key_f_target_object
         def get_constraint_name(constraints_items, index):
-            # constraints = scene.constraints_props.constraints
-            # constraints_select = scene.constraints_props.constraints_select
             
             # constraints と constraints_select が空でないか、インデックスが範囲内であることを確認
-            # if len(constraints) > 0 and len(constraints_select) > 0:
             if 0 <= index < len(constraints_items):
                 constraint_name = constraints_items[index].name
             else:
                 #Noneを返すとgetでバグるので仕方なく空白にする
                 constraint_name = ""
-        # else:
-        #     constraint_name = None
         
             return constraint_name
         
@@ -458,21 +575,22 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
                     "KEY1":{
                     "obj":context.scene.keymapframe_maker.key_f_target_object,
                     "col":col1,
-                    "list_props":scene.constraints_props,
+                    "list_props":constraints_prop,
                     "list":"constraints",
                     "list_index":"constraints_index",
-                    "target_constraint" : get_constraint_name(scene.constraints_props.constraints, bpy.context.scene.constraints_props.constraints_index)
-                    # "target_constraint" :scene.constraints_props.constraints[bpy.context.scene.constraints_props.constraints_index].name
+                    "target_constraint" : get_constraint_name(constraints_prop.constraints, constraints_prop.constraints_index),
+                    "status":"Target"
+
 ,
                         },
                     "KEY2":{
                     "obj":context.object,
                     "col":col2,
-                    "list_props":scene.constraints_props,
+                    "list_props":constraints_prop,
                     "list":"constraints_select",
                     "list_index":"constraints_select_index",
-                    "target_constraint" :get_constraint_name(scene.constraints_props.constraints_select, bpy.context.scene.constraints_props.constraints_select_index)
-                    # "target_constraint" :scene.constraints_props.constraints_select[bpy.context.scene.constraints_props.constraints_select_index].name
+                    "target_constraint" :get_constraint_name(constraints_prop.constraints_select, constraints_prop.constraints_select_index),
+                    "status":"Select"
 ,
                         },
                 }
@@ -483,9 +601,12 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
             #　ターゲットプロパティに何も選択してない場合
             if item["obj"]==None:
                 continue
+            item["col"].label(text=f"{item['obj'].name} ({item['status']} constraints.",icon="CONSTRAINT")
             if item["obj"].constraints:
                 
                 if item["obj"]:
+
+
 
                     item["col"].template_list("MY_UL_List", item["list"], item["list_props"], item["list"], item["list_props"], item["list_index"])
 
@@ -511,6 +632,13 @@ class OBJECT_PT_keyframe_panel(bpy.types.Panel):
                     item["col"].label(text=f"This is the display of {target_constraint} Constraint")
                     item["col"].prop(constraint, "enabled")
                     item["col"].prop(constraint, "influence")
+                    if constraint.type=="FOLLOW_PATH":
+                        # bpy.context.object.constraints["パスに追従"].offset = 85.5878
+
+                        item["col"].prop(constraint, "offset")
+
+                        
+
                 else:
                     item["col"].label(text=f"No {target_constraint} constraint found.")
 
@@ -591,8 +719,9 @@ class OBJECT_PT_keyframes_panel(bpy.types.Panel):
 #        target_object = scene.keymapframe_maker.keymapframe_maker.key_f_target_object
 
         obj = scene.keymapframe_maker.key_f_target_object
+        layout_label(layout)
         
-        draw_keyframes(layout, obj, scene)
+        # draw_keyframes(layout, obj, scene)
 
 class OBJECT_OT_animated_playback(bpy.types.Operator):
     bl_idname = "object.animated_playback"
@@ -782,41 +911,6 @@ class KYSYNKFM_OpenAddonPreferencesOperator(Operator):
 
         return {'FINISHED'}
 
-# コレクションプロパティのためのカスタムプロパティグループ
-class FCurvePropertyGroup(bpy.types.PropertyGroup):
-    name: bpy.props.StringProperty(name="F-Curve Path") # type: ignore
-
-class KYSYNKFM_MyProperties(bpy.types.PropertyGroup):
-    active_fcurves: bpy.props.CollectionProperty(type=FCurvePropertyGroup) # type: ignore
-    select_fcurves: bpy.props.CollectionProperty(type=FCurvePropertyGroup) # type: ignore
-    
-    active_index: bpy.props.IntProperty() # type: ignore
-    select_index: bpy.props.IntProperty() # type: ignore
-    
-    object: bpy.props.PointerProperty(
-        name="Target Object",
-        type=bpy.types.Object,
-        description="Target object to get F-Curve paths from"
-    ) # type: ignore
-
-    def update_active_fcurves(self, context):
-        self.active_fcurves.clear()
-        obj = context.active_object
-        if obj and obj.animation_data:
-            for fcurve in obj.animation_data.action.fcurves:
-                item = self.active_fcurves.add()
-                item.name = fcurve.data_path
-
- 
-                
-    def update_select_fcurves(self, context):
-        self.select_fcurves.clear()
-        obj =context.scene.keymapframe_maker.key_f_target_object
-        if obj and obj.animation_data:
-            for fcurve in obj.animation_data.action.fcurves:
-                item = self.select_fcurves.add()
-                item.name = fcurve.data_path
-  
 # カスタムUIリストの定義
 class OBJECT_UL_FCurveList(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
@@ -843,7 +937,7 @@ class OBJECT_PT_FCurvePathsPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        props = scene.my_props
+        props = scene.keymapframe_maker.anime_fcurves_props
         current_frame = scene.frame_current  # 現在のフレームを取得
 
         row = layout.row()
@@ -924,8 +1018,7 @@ class JumpToFrameOperator(bpy.types.Operator):
 
 # クラスの登録
 fcurveprops_classes = [
-    FCurvePropertyGroup,
-    KYSYNKFM_MyProperties,
+    # ,
     OBJECT_UL_FCurveList,
    
     JumpToFrameOperator,
@@ -935,32 +1028,15 @@ fcurveprops_classes = [
 def fcurveprops_register():
     for cls in fcurveprops_classes:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.my_props = bpy.props.PointerProperty(type=KYSYNKFM_MyProperties)
-    bpy.app.handlers.depsgraph_update_post.append(update_fcurves_handler)
 
 def fcurveprops_unregister():
-    bpy.app.handlers.depsgraph_update_post.remove(update_fcurves_handler)
     for cls in fcurveprops_classes:
         bpy.utils.unregister_class(cls)
-    del bpy.types.Scene.my_props
-
-def update_fcurves_handler(scene):
-    scene.my_props.update_active_fcurves(bpy.context)
-    scene.my_props.update_select_fcurves(bpy.context)
 
 
 
-# コレクションプロパティ用のプロパティグループ
-class ConstraintItem(bpy.types.PropertyGroup):
-    name: bpy.props.StringProperty(name="Name") # type: ignore
-    type: bpy.props.StringProperty(name="Type") # type: ignore
 
-# コレクションプロパティの定義
-class ConstraintsProperties(bpy.types.PropertyGroup):
-    constraints: bpy.props.CollectionProperty(type=ConstraintItem) # type: ignore
-    constraints_index: bpy.props.IntProperty(name="Index", default=0) # type: ignore
-    constraints_select: bpy.props.CollectionProperty(type=ConstraintItem) # type: ignore
-    constraints_select_index: bpy.props.IntProperty(name="Index", default=0) # type: ignore
+
 
 # UIリストの定義
 class MY_UL_List(bpy.types.UIList):
@@ -969,33 +1045,11 @@ class MY_UL_List(bpy.types.UIList):
             layout.label(text=f"{item.name}")
             layout.label(text=f"{item.type}")
 
-# コレクションを更新するハンドラー
-def update_constraints(scene):
-    constraints_props = scene.constraints_props
-    target_object = scene.keymapframe_maker.key_f_target_object  # ここでアクティブオブジェクトを読み込む
-    
-    if target_object:
-        constraints = constraints_props.constraints
-        constraints.clear()
-        for c in target_object.constraints:
-            item = constraints.add()
-            item.name = c.name
-            item.type = c.type
 
-
-    if bpy.context.object:
-        constraints_select = constraints_props.constraints_select
-        constraints_select.clear()
-        for c in bpy.context.object.constraints:
-            item = constraints_select.add()
-            item.name = c.name
-            item.type = c.type
 
 
 # クラスをリストにまとめる
 constrain_classes = [
-    ConstraintItem,
-    ConstraintsProperties,
     # MY_PT_Panel,
     MY_UL_List,
 ]
@@ -1005,15 +1059,13 @@ def constrain_register():
     for cls in constrain_classes:
         bpy.utils.register_class(cls)
     
-    bpy.types.Scene.constraints_props  = bpy.props.PointerProperty(type=ConstraintsProperties)
-    bpy.app.handlers.depsgraph_update_post.append(update_constraints)
+    # bpy.types.scene.keymapframe_maker.constraints_props  = bpy.props.PointerProperty(type=ConstraintsProperties)
 
 def constrain_unregister():
     for cls in reversed(constrain_classes):
         bpy.utils.unregister_class(cls)
     
-    del bpy.types.Scene.constraints_props 
-    bpy.app.handlers.depsgraph_update_post.remove(update_constraints)
+    # del bpy.types.scene.keymapframe_maker.constraints_props 
 
 # クラスの登録
 
