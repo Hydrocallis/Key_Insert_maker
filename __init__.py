@@ -46,12 +46,13 @@ class KYSYNKFM_PG_Fcurves(bpy.types.PropertyGroup):
     ) # type: ignore
 
     def update_active_fcurves(self, context):
+        
         self.active_fcurves.clear()
         obj = context.active_object
         #選択したオブジェクトにアニメ関連のデータが無いかチェック
-        if obj.animation_data:
-            if obj.animation_data.action:
-                if obj and obj.animation_data:
+        if obj:
+            if obj.animation_data:
+                if obj.animation_data.action:
                     #　エフカーブの名前を習得していく
                     for fcurve in obj.animation_data.action.fcurves:
                         item = self.active_fcurves.add()
